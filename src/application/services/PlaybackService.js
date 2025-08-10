@@ -27,33 +27,48 @@ class PlaybackService {
         }
 
         const track = queue.nextSong();
-        try {
-            const { resource, metadata } = await this.streamProvider.createResource(track);
-            // Log de calidad/estrategia del recurso
+        const maxAttempts = 3;
+        let lastError = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
             try {
-                this.logger.info("Playback resource", {
-                    guildId,
-                    quality: {
-                        source: metadata?.source,
-                        codec: metadata?.codec,
-                        container: metadata?.container,
-                        passthrough: metadata?.passthrough,
-                        bitrateKbps: metadata?.bitrateKbps,
-                        highWaterMark: metadata?.highWaterMark,
-                    },
-                });
-            } catch { }
-            await this.audioPlayer.subscribe(guildId, resource);
-            queue.playing = true;
-            this.queueRepository.save(queue);
-            this.logger.info("Playback started", { guildId, track: { title: track?.title, url: track?.url } });
-            return true;
-        } catch (error) {
-            this.logger.error("PlaybackService.playNext failed", error, { guildId, trackUrl: track?.url });
-            queue.playing = false;
-            this.queueRepository.save(queue);
-            return false;
+                const { resource, metadata } = await this.streamProvider.createResource(track, guildId);
+                // Log de calidad/estrategia del recurso
+                try {
+                    this.logger.info("Playback resource", {
+                        guildId,
+                        quality: {
+                            source: metadata?.source,
+                            codec: metadata?.codec,
+                            container: metadata?.container,
+                            passthrough: metadata?.passthrough,
+                            bitrateKbps: metadata?.bitrateKbps,
+                            highWaterMark: metadata?.highWaterMark,
+                        },
+                    });
+                } catch { }
+                await this.audioPlayer.subscribe(guildId, resource);
+                queue.playing = true;
+                this.queueRepository.save(queue);
+                this.logger.info("Playback started", { guildId, track: { title: track?.title, url: track?.url } });
+
+                // Prefetch (mejorar transición): preparar siguiente recurso si hay canciones
+                try {
+                    if (queue.songs.length > 0 && typeof this.streamProvider.prefetch === "function") {
+                        const next = queue.songs[0];
+                        this.streamProvider.prefetch(next).catch(() => { });
+                    }
+                } catch { }
+                return true;
+            } catch (error) {
+                lastError = error;
+                this.logger.warn("PlaybackService.playNext attempt failed", { guildId, attempt, error: error?.message });
+                await new Promise((r) => setTimeout(r, attempt * 250));
+            }
         }
+        this.logger.error("PlaybackService.playNext failed", lastError, { guildId, trackUrl: track?.url });
+        queue.playing = false;
+        this.queueRepository.save(queue);
+        return false;
     }
 
     pause(guildId) {
@@ -68,6 +83,9 @@ class PlaybackService {
 
     async skip(guildId) {
         try {
+            if (typeof this.streamProvider.cancel === "function") {
+                await this.streamProvider.cancel(guildId);
+            }
             await this.audioPlayer.stop(guildId);
         } catch { }
         this.logger.info("Playback skipped", { guildId });
@@ -81,6 +99,9 @@ class PlaybackService {
             this.queueRepository.save(queue);
         }
         this.logger.info("Playback stopped", { guildId });
+        if (typeof this.streamProvider.cancel === "function") {
+            this.streamProvider.cancel(guildId).catch(() => { });
+        }
         return this.audioPlayer.stop(guildId);
     }
 }

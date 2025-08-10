@@ -107,6 +107,21 @@ class StreamYtDlp {
         }
     }
 
+    // Prefetch opcional: valida que se pueda obtener info/stream rápidamente
+    async prefetch(track) {
+        try {
+            await play.video_info(track.url);
+        } catch {
+            // no-op
+        }
+    }
+
+    // Cancelación (placeholder): si usas procesos FFmpeg por guild, guárdalos y termínalos aquí
+    async cancel(guildId) {
+        // No mantenemos procesos por guild en este adapter minimal, así que no hay nada que cancelar
+        return;
+    }
+
     async fetchHttp(url) {
         const https = require("https");
         const http = require("http");

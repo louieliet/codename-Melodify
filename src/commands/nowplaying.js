@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const EmbedsFactory = require("../interfaces/discord/embeds/EmbedsFactory");
 
 module.exports = {
@@ -43,6 +43,12 @@ module.exports = {
       });
     }
 
-    await interaction.reply({ embeds: [songEmbed] });
+    const controls = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("np_pause").setLabel(isPlaying ? "Pausar" : "Reanudar").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("np_skip").setLabel("Saltar").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("np_stop").setLabel("Detener").setStyle(ButtonStyle.Danger)
+    );
+
+    await interaction.reply({ embeds: [songEmbed], components: [controls] });
   },
 };

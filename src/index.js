@@ -102,26 +102,49 @@ client.once("ready", () => {
 
 // Manejar interacciones de comandos slash
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = interaction.client.commands.get(interaction.commandName);
-
-  if (!command) {
-    console.error(`No se encontró el comando ${interaction.commandName}.`);
-    return;
-  }
-
   try {
+    if (interaction.isAutocomplete()) {
+      const command = interaction.client.commands.get(interaction.commandName);
+      if (command?.autocomplete) {
+        await command.autocomplete(interaction);
+      }
+      return;
+    }
+
+    if (interaction.isButton()) {
+      const guildId = interaction.guildId;
+      const app = interaction.client.app;
+      const id = interaction.customId;
+      if (id === "np_pause") {
+        const info = app.queueService.getQueueInfo(guildId);
+        if (info.playing) await app.playbackService.pause(guildId);
+        else await app.playbackService.resume(guildId);
+        await interaction.reply({ content: info.playing ? "⏸️ Pausado" : "▶️ Reanudado", ephemeral: true });
+      } else if (id === "np_skip") {
+        await app.playbackService.skip(guildId);
+        await interaction.reply({ content: "⏭️ Saltado", ephemeral: true });
+      } else if (id === "np_stop") {
+        await app.playbackService.stop(guildId);
+        await interaction.reply({ content: "⏹️ Detenido", ephemeral: true });
+      }
+      return;
+    }
+
+    if (!interaction.isChatInputCommand()) return;
+
+    const command = interaction.client.commands.get(interaction.commandName);
+    if (!command) return;
     await command.execute(interaction);
   } catch (error) {
-    console.error("Error ejecutando comando:", error);
-    const content = "❌ Hubo un error al ejecutar este comando.";
-
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content, ephemeral: true });
-    } else {
-      await interaction.reply({ content, ephemeral: true });
-    }
+    console.error("Error ejecutando interacción:", error);
+    const content = "❌ Hubo un error al procesar la interacción.";
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content, ephemeral: true });
+      } else {
+        await interaction.reply({ content, ephemeral: true });
+      }
+    } catch { }
   }
 });
 

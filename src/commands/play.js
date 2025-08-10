@@ -11,6 +11,7 @@ module.exports = {
         .setName("cancion")
         .setDescription("URL de YouTube o términos de búsqueda")
         .setRequired(true)
+        .setAutocomplete(true)
     ),
 
   async execute(interaction) {
@@ -153,6 +154,23 @@ module.exports = {
             .setDescription("Hubo un error al procesar la canción."),
         ],
       });
+    }
+  },
+  async autocomplete(interaction) {
+    try {
+      const focused = interaction.options.getFocused();
+      const search = interaction.client.app?.search;
+      let choices = [];
+      if (search && focused && focused.length > 1) {
+        const results = await search.search(focused, 5);
+        choices = results.map((t) => ({ name: `${t.title} — ${t.author}`, value: t.url })).slice(0, 25);
+      }
+      if (choices.length === 0 && focused) {
+        choices = [{ name: focused.substring(0, 100), value: focused }];
+      }
+      await interaction.respond(choices);
+    } catch {
+      try { await interaction.respond([]); } catch { }
     }
   },
 };

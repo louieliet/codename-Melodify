@@ -62,6 +62,7 @@ class AudioPlayerDiscordVoice {
             entry.connection?.destroy();
         } finally {
             this.players.delete(guildId);
+            this.wired.delete(guildId);
         }
     }
 
