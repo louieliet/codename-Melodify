@@ -14,6 +14,14 @@ module.exports = {
     maxSongDuration: 3600, // 1 hora en segundos
     searchLimit: 5,
     songsPerPage: 10,
+    // Audio advanced (calidad/estabilidad)
+    audio: {
+      highWaterMark: parseInt(process.env.AUDIO_HIGH_WATER_MARK || `${1 << 25}`, 10), // 32MB
+      targetBitrateKbps: parseInt(process.env.AUDIO_TARGET_BITRATE || "128", 10),
+      forceTranscode: process.env.AUDIO_FORCE_TRANSCODE === "true", // forzar re-encode (debug)
+      enableNormalize: process.env.AUDIO_ENABLE_NORMALIZE === "true", // normalización loudness
+      inputReconnect: process.env.AUDIO_INPUT_RECONNECT !== "false", // reconexiones HTTP
+    },
   },
 
   // Colores para embeds

@@ -7,7 +7,6 @@ module.exports = {
 
   async execute(interaction) {
     const guild = interaction.guild;
-    const queue = interaction.client.queues.get(guild.id);
 
     const member = interaction.member;
     const botVoiceChannel = guild.members.me.voice.channel;
@@ -37,10 +36,10 @@ module.exports = {
       });
     }
 
-    if (queue) {
-      queue.destroy();
-      interaction.client.queues.delete(guild.id);
-    }
+    try {
+      await interaction.client.app?.audioPlayer?.disconnect(guild.id);
+      interaction.client.app?.queueRepository?.clear(guild.id);
+    } catch { }
 
     await interaction.reply({
       embeds: [

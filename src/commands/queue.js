@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const MusicUtils = require("../utils/MusicUtils");
+const EmbedsFactory = require("../interfaces/discord/embeds/EmbedsFactory");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -14,9 +15,9 @@ module.exports = {
 
   async execute(interaction) {
     const guild = interaction.guild;
-    const queue = interaction.client.queues.get(guild.id);
+    const queueInfo = interaction.client.app.queueService.getQueueInfo(guild.id);
 
-    if (!queue) {
+    if (!queueInfo || (!queueInfo.current && queueInfo.length === 0)) {
       return await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -31,7 +32,7 @@ module.exports = {
     }
 
     const page = interaction.options.getInteger("pagina") || 1;
-    const embed = MusicUtils.createQueueEmbed(queue, page);
+    const embed = EmbedsFactory.queue(queueInfo, page);
 
     await interaction.reply({ embeds: [embed] });
   },

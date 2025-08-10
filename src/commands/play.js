@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { joinVoiceChannel } = require("@discordjs/voice");
-const Queue = require("../utils/Queue");
 const MusicUtils = require("../utils/MusicUtils");
+const EmbedsFactory = require("../interfaces/discord/embeds/EmbedsFactory");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -38,68 +37,96 @@ module.exports = {
     const voiceChannel = voiceCheck.channel;
 
     try {
-      // Obtener o crear cola para este servidor
-      let queue = interaction.client.queues.get(guild.id);
-      if (!queue) {
-        queue = new Queue(guild.id);
-        interaction.client.queues.set(guild.id, queue);
-      }
-
-      // Conectar al canal de voz si no está conectado
-      if (!queue.connection) {
-        const connection = joinVoiceChannel({
-          channelId: voiceChannel.id,
-          guildId: guild.id,
-          adapterCreator: guild.voiceAdapterCreator,
+      const app = interaction.client.app;
+      const hasNewPlayback = Boolean(app?.playbackService);
+      if (hasNewPlayback) {
+        await app.audioPlayer.connect(guild.id, voiceChannel);
+        // Auto-advance: cuando el player quede idle, reproducir la siguiente
+        app.audioPlayer.onStatus(guild.id, async (status) => {
+          if (status === "idle") {
+            try {
+              await app.playbackService.playNext(guild.id);
+            } catch { }
+          }
         });
-        queue.connection = connection;
       }
 
       let songInfo;
+      const search = interaction.client.app?.search;
 
-      // Verificar si es una URL o términos de búsqueda
-      if (MusicUtils.isValidURL(query)) {
-        if (MusicUtils.isYouTubeURL(query)) {
-          songInfo = await MusicUtils.getYouTubeInfo(query);
+      // Fase 1: usar el adapter de búsqueda si está disponible; fallback a MusicUtils
+      if (search) {
+        if (MusicUtils.isValidURL(query)) {
+          if (MusicUtils.isYouTubeURL(query)) {
+            songInfo = await search.getInfo(query);
+          } else {
+            return await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor("#ff4757")
+                  .setTitle("❌ Error")
+                  .setDescription("Solo se admiten URLs de YouTube por ahora."),
+              ],
+            });
+          }
         } else {
-          return await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor("#ff4757")
-                .setTitle("❌ Error")
-                .setDescription("Solo se admiten URLs de YouTube por ahora."),
-            ],
-          });
+          const results = await search.search(query, 1);
+          if (!results.length) {
+            return await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor("#ff4757")
+                  .setTitle("❌ Sin resultados")
+                  .setDescription("No se encontraron canciones con esa búsqueda."),
+              ],
+            });
+          }
+          songInfo = results[0];
         }
       } else {
-        // Buscar en YouTube
-        const searchResults = await MusicUtils.searchYouTube(query, 1);
-        if (searchResults.length === 0) {
-          return await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor("#ff4757")
-                .setTitle("❌ Sin resultados")
-                .setDescription(
-                  "No se encontraron canciones con esa búsqueda."
-                ),
-            ],
-          });
+        // Fallback legacy a MusicUtils
+        if (MusicUtils.isValidURL(query)) {
+          if (MusicUtils.isYouTubeURL(query)) {
+            songInfo = await MusicUtils.getYouTubeInfo(query);
+          } else {
+            return await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor("#ff4757")
+                  .setTitle("❌ Error")
+                  .setDescription("Solo se admiten URLs de YouTube por ahora."),
+              ],
+            });
+          }
+        } else {
+          const searchResults = await MusicUtils.searchYouTube(query, 1);
+          if (searchResults.length === 0) {
+            return await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor("#ff4757")
+                  .setTitle("❌ Sin resultados")
+                  .setDescription("No se encontraron canciones con esa búsqueda."),
+              ],
+            });
+          }
+          songInfo = searchResults[0];
         }
-        songInfo = searchResults[0];
       }
 
-      // Añadir canción a la cola
-      queue.addSong(songInfo);
+      // Determinar si estaba vacía antes de encolar
+      const existing = app.queueRepository.get(guild.id);
+      const wasEmpty = !existing || (!existing.playing && (existing.songs?.length || 0) === 0);
 
-      // Si no hay nada reproduciéndose, empezar la reproducción
-      const wasEmpty = !queue.playing && queue.songs.length === 1;
+      // Encolar en la nueva capa de aplicación
+      app.queueService.addSong(guild.id, songInfo);
 
+      // Si estaba vacía, empezar la reproducción con la nueva capa
       if (wasEmpty) {
-        const started = await queue.playNext();
+        const started = await app.playbackService.playNext(guild.id);
         if (started) {
           await interaction.editReply({
-            embeds: [MusicUtils.createSongEmbed(songInfo, "playing")],
+            embeds: [EmbedsFactory.song(songInfo, "playing")],
           });
         } else {
           await interaction.editReply({
@@ -113,7 +140,7 @@ module.exports = {
         }
       } else {
         await interaction.editReply({
-          embeds: [MusicUtils.createSongEmbed(songInfo, "queued")],
+          embeds: [EmbedsFactory.song(songInfo, "queued")],
         });
       }
     } catch (error) {

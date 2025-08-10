@@ -7,9 +7,9 @@ module.exports = {
 
   async execute(interaction) {
     const guild = interaction.guild;
-    const queue = interaction.client.queues.get(guild.id);
+    const queueInfo = interaction.client.app.queueService.getQueueInfo(guild.id);
 
-    if (!queue || !queue.currentSong) {
+    if (!queueInfo.current) {
       return await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -37,8 +37,12 @@ module.exports = {
       });
     }
 
-    const currentSong = queue.currentSong;
-    const skipped = queue.skip();
+    const currentSong = queueInfo.current;
+    let skipped = false;
+    try {
+      const s2 = await interaction.client.app?.playbackService?.skip(guild.id);
+      if (typeof s2 === "boolean") skipped = skipped || s2;
+    } catch { }
 
     if (skipped) {
       await interaction.reply({

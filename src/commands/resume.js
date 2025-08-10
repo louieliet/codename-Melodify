@@ -7,9 +7,9 @@ module.exports = {
 
   async execute(interaction) {
     const guild = interaction.guild;
-    const queue = interaction.client.queues.get(guild.id);
+    const queueInfo = interaction.client.app.queueService.getQueueInfo(guild.id);
 
-    if (!queue || !queue.currentSong) {
+    if (!queueInfo.current) {
       return await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -37,7 +37,11 @@ module.exports = {
       });
     }
 
-    const resumed = queue.resume();
+    let resumed = false;
+    try {
+      const r2 = await interaction.client.app?.playbackService?.resume(guild.id);
+      if (typeof r2 === "boolean") resumed = r2;
+    } catch { }
 
     if (resumed) {
       await interaction.reply({

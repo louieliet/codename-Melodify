@@ -15,6 +15,14 @@ require("dotenv").config();
 const MusicUtils = require("./utils/MusicUtils");
 MusicUtils.initialize();
 
+// Bootstrap de capa de aplicación (repositorio y servicios)
+const InMemoryQueueRepository = require("./infrastructure/repositories/InMemoryQueueRepository");
+const QueueService = require("./application/services/QueueService");
+const SearchPlayDL = require("./infrastructure/adapters/SearchPlayDL");
+const AudioPlayerDiscordVoice = require("./infrastructure/adapters/AudioPlayerDiscordVoice");
+const StreamYtDlp = require("./infrastructure/adapters/StreamYtDlp");
+const PlaybackService = require("./application/services/PlaybackService");
+
 // Crear el cliente de Discord
 const client = new Client({
   intents: [
@@ -27,6 +35,32 @@ const client = new Client({
 
 // Colección para almacenar comandos
 client.commands = new Collection();
+
+// Contenedor sencillo (expuesto en client.app para comandos)
+client.app = {
+  queueRepository: new InMemoryQueueRepository(),
+  queueService: null,
+  search: new SearchPlayDL(),
+  audioPlayer: null,
+  streamProvider: null,
+  playbackService: null,
+};
+client.app.queueService = new QueueService(client.app.queueRepository);
+client.app.search.initialize?.();
+client.app.audioPlayer = new AudioPlayerDiscordVoice(client);
+client.app.streamProvider = new StreamYtDlp();
+client.app.playbackService = new PlaybackService({
+  audioPlayer: client.app.audioPlayer,
+  streamProvider: client.app.streamProvider,
+  queueRepository: client.app.queueRepository,
+  logger: console,
+});
+
+// Auto-advance: cuando el player quede idle, pasar a la siguiente
+client.app.audioPlayer.onStatus("global", async (status) => {
+  // Los adapters internos ya mapean por guild; si necesitas granularidad por guild, 
+  // expón onStatus por guildId durante la conexión
+});
 
 // Cargar comandos
 const commandsPath = path.join(__dirname, "commands");
@@ -48,8 +82,8 @@ for (const file of commandFiles) {
   }
 }
 
-// Mapa para almacenar las colas de música por servidor
-client.queues = new Map();
+// Eliminado: client.queues ya no se usa (QueueService reemplaza)
+delete client.queues;
 
 // Evento cuando el bot está listo
 client.once("ready", () => {

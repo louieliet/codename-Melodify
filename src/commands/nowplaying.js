@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const MusicUtils = require("../utils/MusicUtils");
+const EmbedsFactory = require("../interfaces/discord/embeds/EmbedsFactory");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -8,9 +8,9 @@ module.exports = {
 
   async execute(interaction) {
     const guild = interaction.guild;
-    const queue = interaction.client.queues.get(guild.id);
+    const queueInfo = interaction.client.app.queueService.getQueueInfo(guild.id);
 
-    if (!queue || !queue.currentSong) {
+    if (!queueInfo || !queueInfo.current) {
       return await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -22,44 +22,27 @@ module.exports = {
       });
     }
 
-    const currentSong = queue.currentSong;
-    const isPlaying = queue.playing;
+    const currentSong = queueInfo.current;
+    const isPlaying = queueInfo.playing;
 
-    const embed = new EmbedBuilder()
+    const base = new EmbedBuilder()
       .setColor("#ff6b6b")
-      .setTitle(
-        `${isPlaying ? "🎵" : "⏸️"} ${
-          isPlaying ? "Reproduciendo ahora" : "Pausado"
-        }`
-      )
-      .setDescription(`**${currentSong.title}**`)
-      .addFields(
-        { name: "👤 Autor", value: currentSong.author, inline: true },
-        { name: "⏱️ Duración", value: currentSong.duration, inline: true },
-        { name: "👁️ Vistas", value: currentSong.views, inline: true },
-        {
-          name: "🔗 URL",
-          value: `[Abrir en YouTube](${currentSong.url})`,
-          inline: false,
-        }
-      )
+      .setTitle(`${isPlaying ? "🎵" : "⏸️"} ${isPlaying ? "Reproduciendo ahora" : "Pausado"}`)
       .setTimestamp();
 
-    if (currentSong.thumbnail) {
-      embed.setThumbnail(currentSong.thumbnail);
-    }
+    const songEmbed = EmbedsFactory.song(currentSong, isPlaying ? "playing" : "queued");
+    // Copiamos campos del embed base a fin de mantener el título/estilo solicitado
+    songEmbed.setColor(base.data.color);
+    songEmbed.setTitle(base.data.title);
 
-    const queueInfo = queue.getQueueInfo();
     if (queueInfo.length > 0) {
-      embed.addFields({
+      songEmbed.addFields({
         name: "📝 En cola",
-        value: `${queueInfo.length} canción${
-          queueInfo.length !== 1 ? "es" : ""
-        } en espera`,
+        value: `${queueInfo.length} canción${queueInfo.length !== 1 ? "es" : ""} en espera`,
         inline: true,
       });
     }
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [songEmbed] });
   },
 };
